@@ -38,14 +38,14 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	ext, err := getFtype(file)
+	ext, mimeType, err := getFtype(file)
 	if err != nil {
 		writeError(w, err.Error(), 500)
 		return
 	}
 
 	if !allowedTypes[ext] {
-		writeError(w, fmt.Sprintf("Недопустимый тип файла: %v", ext), 500)
+		writeError(w, fmt.Sprintf("Недопустимый тип файла: %v", mimeType), 403)
 		return
 	}
 
@@ -54,43 +54,42 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err.Error(), 500)
 		return
 	}
-	err = saveUploadedFile(file, imagePath("o", fname+ext))
+	err = saveUploadedFile(file, imagePath("o", fname, ext))
 	if err != nil {
 		writeError(w, err.Error(), 500)
 		return
 	}
-	res := getUploadResult(fname, ext)
+	res := getUploadResult(fname, ext, mimeType)
 	writeResult(w, res)
 }
 
-func getUploadResult(fname, ext string) uploadResult {
+func getUploadResult(fname, ext, mime string) uploadResult {
 	return uploadResult{
 		fname,
 		ext,
 		uriHelper(fname),
-		"",
+		mime,
 	}
 }
 
-func getFtype(file multipart.File) (string, error) {
-	var ext string
+func getFtype(file multipart.File) (ext, mimeType string, err error) {
 	defer file.Seek(0, io.SeekStart)
 
 	buffer := make([]byte, 512)
 
-	_, err := file.Read(buffer)
+	_, err = file.Read(buffer)
 	if err != nil {
-		return ext, err
+		return
 	}
-	contentType := http.DetectContentType(buffer)
-	extslice, err := mime.ExtensionsByType(contentType)
+	mimeType = http.DetectContentType(buffer)
+	extslice, err := mime.ExtensionsByType(mimeType)
 	if err != nil {
-		return ext, err
+		return
 	}
-	if extslice == nil {
-		return ext, nil
+	if extslice != nil {
+		ext = extslice[0]
 	}
-	return extslice[0], nil
+	return
 }
 
 func genName(file multipart.File) (string, error) {
@@ -124,6 +123,7 @@ func saveUploadedFile(file multipart.File, to string) error {
 		fmt.Println(err)
 		return err
 	}
+	defer f.Close()
 	_, err = io.Copy(f, file)
 	return err
 }

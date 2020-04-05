@@ -76,7 +76,7 @@ func serveImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fpath := imagePath(sz, name)
+	fpath := imagePath(sz, name, ext)
 	f, err := os.Open(fpath)
 	if err != nil {
 		fmt.Println(err)
@@ -84,14 +84,14 @@ func serveImage(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err.Error(), 404)
 			return
 		}
-		src, err := getOriginalImage(name)
+		original, err := getOriginalImage(name)
 		if err != nil {
 			writeError(w, err.Error(), 404)
 			return
 		}
 		wh := allowedSizes[sz]
 
-		src, err = bimg.NewImage(src).Resize(wh[0], 0)
+		src, err := original.Resize(wh[0], 0)
 		if err != nil {
 			writeError(w, err.Error(), 404)
 			return
@@ -122,7 +122,7 @@ func serveImage(w http.ResponseWriter, r *http.Request) {
 func bimgType(ext string) bimg.ImageType {
 	switch ext {
 	case ".jpg":
-		return bimg.JPEG
+		fallthrough
 	case ".jpeg":
 		return bimg.JPEG
 	case ".png":
@@ -135,25 +135,27 @@ func bimgType(ext string) bimg.ImageType {
 	return bimg.UNKNOWN
 }
 
-func getOriginalImage(fname string) ([]byte, error) {
+func getOriginalImage(fname string) (*bimg.Image, error) {
 	ext := path.Ext(fname)
 	name := strings.TrimSuffix(fname, ext)
+	buffer, err := bimg.Read(imagePath("o", name, ext))
 
-	for k := range allowedTypes {
-		buffer, err := bimg.Read(imagePath("o", name+k))
-		if err == nil {
-			return buffer, nil
-		}
+	if err == nil {
+		return bimg.NewImage(buffer), nil
 	}
-	return nil, errors.New("Not found")
+
+	return nil, errors.New("Image Not found")
 }
 
-func imagePath(sz, name string) string {
-	return fmt.Sprintf("%s/%s/%s", imageDir, sz, name)
+func imagePath(sz, name, ext string) string {
+	if sz == "o" {
+		return fmt.Sprintf("%s/%s/%s", imageDir, sz, name) // сохраняем оригинальный размер без расширения
+	}
+	return fmt.Sprintf("%s/%s/%s%s", imageDir, sz, name, ext)
 }
 
-func processImagePath(p string) (fname, ext, sz string, err error) {
-	fname = path.Base(p)
+func processImagePath(p string) (name, ext, sz string, err error) {
+	fname := path.Base(p)
 	parts := strings.Split(fname, ".")
 	if len(parts) != 3 {
 		err = errors.New("bad name")
@@ -172,7 +174,7 @@ func processImagePath(p string) (fname, ext, sz string, err error) {
 		err = errors.New("bad image size requested")
 		return
 	}
-	fname = parts[1] + ext
+	name = parts[1]
 	return
 }
 func uriHelper(name string) string {
