@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime"
+	m "mime"
 	"net/http"
 	"os"
 	"path"
@@ -70,6 +70,7 @@ func main() {
 }
 
 func serveImage(w http.ResponseWriter, r *http.Request) {
+	var mime string
 	name, ext, sz, err := processImagePath(r.URL.EscapedPath())
 	if err != nil {
 		writeError(w, err.Error(), 404)
@@ -78,12 +79,28 @@ func serveImage(w http.ResponseWriter, r *http.Request) {
 
 	fpath := imagePath(sz, name, ext)
 	f, err := os.Open(fpath)
-	if err != nil {
-		fmt.Println(err)
-		if sz == "o" {
+
+	// original size file
+	if sz == "o" {
+		if err != nil {
 			writeError(w, err.Error(), 404)
 			return
 		}
+		defer f.Close()
+		_, mime, err = getFtype(f)
+		if err != nil {
+			writeError(w, err.Error(), 404)
+			return
+		}
+	}
+
+	// other sizes
+	if err != nil {
+		if !os.IsNotExist(err) {
+			writeError(w, err.Error(), 404)
+			return
+		}
+
 		original, err := getOriginalImage(name)
 		if err != nil {
 			writeError(w, err.Error(), 404)
@@ -96,23 +113,32 @@ func serveImage(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err.Error(), 404)
 			return
 		}
-		src, err = bimg.NewImage(src).Convert(bimgType(ext))
-		if err != nil {
-			writeError(w, err.Error(), 404)
-			return
-		}
-		err = bimg.Write(fpath, src)
 
+		original = nil
+
+		if bimg.DetermineImageType(src) != bimgType(ext) {
+			src, err = bimg.NewImage(src).Convert(bimgType(ext))
+			if err != nil {
+				writeError(w, err.Error(), 404)
+				return
+			}
+		}
+		mime = http.DetectContentType(src)
+
+		err = bimg.Write(fpath, src)
 		if err != nil {
 			writeError(w, err.Error(), 404)
 			return
 		}
+
 		f, err = os.Open(fpath)
-	}
-	defer f.Close()
-	mime := mime.TypeByExtension(ext)
-	if mime == "" {
-		mime = "application/octet-stream"
+		if err != nil {
+			writeError(w, err.Error(), 404)
+			return
+		}
+		defer f.Close()
+	} else {
+		mime = m.TypeByExtension(ext)
 	}
 
 	w.Header().Set("Content-Type", mime)

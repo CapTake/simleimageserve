@@ -72,7 +72,7 @@ func getUploadResult(fname, ext, mime string) uploadResult {
 	}
 }
 
-func getFtype(file multipart.File) (ext, mimeType string, err error) {
+func getFtype(file io.ReadSeeker) (ext, mimeType string, err error) {
 	defer file.Seek(0, io.SeekStart)
 
 	buffer := make([]byte, 512)
