@@ -11,7 +11,7 @@ RestartSec=5
 User=www-data
 Group=www-data
 
-Environment=WORK_ENV=production IMG_DIR=images PORT=8080 "UPLOAD_TYPES=png jpg jpeg webp"
+Environment=WORK_ENV=production IMG_DIR=images PORT=8080 "UPLOAD_TYPES=.png .jpg .jpeg .webp"
 
 OOMScoreAdjust=-100
 

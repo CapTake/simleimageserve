@@ -28,15 +28,3 @@ func writeError(w http.ResponseWriter, res interface{}, status int) {
 	encoded, _ := json.Marshal(result{fmt.Sprintf("%v", status), nil, res})
 	w.Write(encoded)
 }
-
-// protected function result (Response $response, $result, $status = null) {
-// 	$data = ['status' => $status];
-
-// 	if ($status === null) {
-// 		$data['res'] = $result;
-// 		$data['status'] = 'OK';
-// 	} else {
-// 		$data['error'] = $result;
-// 	}
-// 	return $response->withJson($data, 200);
-// }
