@@ -64,6 +64,9 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := getUploadResult(fname, ext, mimeType)
+	stats.mu.Lock()
+	stats.Uploaded++
+	stats.mu.Unlock()
 	writeResult(w, res)
 }
 

@@ -10,6 +10,8 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/h2non/bimg" // lib vips is required! install it first: sudo apt install libvips libvips-dev
 	"github.com/kelseyhightower/envconfig"
@@ -30,9 +32,20 @@ type Config struct {
 	AllowedSizes map[string][2]uint16 `yaml:"sizes"`
 }
 
+// Stats - global app stats
+type Stats struct {
+	Since    string
+	Served   int64
+	Uploaded int64
+	Errors   int64
+	mu       sync.Mutex
+}
+
 var config Config
+var stats Stats
 
 func init() {
+	stats.Since = time.Now().String()
 	config = Config{
 		Domain:      "",
 		ImageDir:    "images",
@@ -167,6 +180,9 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mime)
 	io.Copy(w, f)
+	stats.mu.Lock()
+	stats.Served++
+	stats.mu.Unlock()
 }
 
 func bimgType(ext string) bimg.ImageType {
