@@ -21,7 +21,11 @@ type uploadResult struct {
 }
 
 // Upload - upload image file
-func upload(w http.ResponseWriter, r *http.Request) {
+func Upload(w http.ResponseWriter, r *http.Request) {
+	if !isAccessAllowed(r) {
+		writeError(w, "Access denied", 403)
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeError(w, "Method not allowed", 405)
 		return
@@ -44,7 +48,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !allowedTypes[ext] {
+	if _, ok := config.UploadTypes[ext]; !ok {
 		writeError(w, fmt.Sprintf("Недопустимый тип файла: %v", mimeType), 403)
 		return
 	}

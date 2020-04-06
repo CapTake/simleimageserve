@@ -12,64 +12,88 @@ import (
 	"strings"
 
 	"github.com/h2non/bimg" // lib vips is required! install it first: sudo apt install libvips libvips-dev
+	"github.com/kelseyhightower/envconfig"
+	"gopkg.in/yaml.v2"
 )
 
-var imageDir = "images"
-var domain = "media.metring.com"
-var port = "8080"
-var allowedTypes = map[string]bool{
-	".png":  true,
-	".gif":  true,
-	".webp": true,
-	".jpeg": true,
-	".jpg":  true,
+// Config - main app configuration
+// var imageDir = "images"
+// var domain = "media.metring.com"
+type Config struct {
+	Domain       string               `yaml:"domain" envconfig:"IMAGESERVER_DOMAIN"`
+	ImageDir     string               `yaml:"imgdir" envconfig:"IMAGESERVER_DIR"`
+	ListenAddr   string               `yaml:"listen"  envconfig:"IMAGESERVER_LISTEN_ADDR"`
+	Secret       string               `yaml:"secret"  envconfig:"APP_SECRET"`
+	Debug        bool                 `yaml:"debug" envconfig:"IMAGESERVER_DEBUG"`
+	UploadTypes  map[string]bool      `yaml:"uploadable" envconfig:"IMAGESERVER_UPLOAD_TYPES"`
+	ReadTypes    map[string]bool      `yaml:"readable" envconfig:"IMAGESERVER_READ_TYPES"`
+	AllowedSizes map[string][2]uint16 `yaml:"sizes"`
 }
-var allowedSizes = map[string][]int{
-	"o":  []int{0, 0},
-	"d":  []int{16, 9},
-	"xs": []int{64, 36},
-	"sm": []int{384, 216},
-	"md": []int{768, 432},
-	"lg": []int{1280, 720},
-	"xl": []int{1920, 1080},
-}
+
+var config Config
 
 func init() {
-	if dir := os.Getenv("IMG_DIR"); dir != "" {
-		imageDir = dir
+	config = Config{
+		Domain:      "",
+		ImageDir:    "images",
+		ListenAddr:  "localhost:8080",
+		Secret:      "",
+		Debug:       false,
+		UploadTypes: map[string]bool{".jpg": true, ".jpeg": true, ".png": true},
+		ReadTypes:   map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true},
+		AllowedSizes: map[string][2]uint16{
+			"o":  [2]uint16{0, 0},
+			"d":  [2]uint16{16, 9},
+			"xs": [2]uint16{64, 36},
+			"sm": [2]uint16{384, 216},
+			"md": [2]uint16{768, 432},
+			"lg": [2]uint16{1280, 720},
+			"xl": [2]uint16{1920, 1080},
+		},
 	}
-	fmt.Println("ImageDir:", imageDir)
-	if p := os.Getenv("PORT"); p != "" {
-		port = p
-	}
-	fmt.Println("Port:", port)
-	fmt.Println("User:", os.Getenv("USER"))
-	fmt.Println("Working dir:", os.Getenv("PWD"))
-	upl := os.Getenv("UPLOAD_TYPES")
-	fmt.Println("Upload types:", strings.Fields(upl))
-	fmt.Println()
+	// res, _ := yaml.Marshal(&config)
+	// fmt.Println(string(res))
+}
 
-	for k := range allowedSizes {
-		dir := fmt.Sprintf("%s/%s", imageDir, k)
+func main() {
+	readConfigFile(&config)
+	readConfigEnv(&config)
+	if config.Domain == "" {
+		log.Fatalln("config.Domain unspecified, can't continue.")
+	}
+	if config.Secret == "" {
+		log.Fatalln("config.Secret unspecified, can't continue.")
+	}
+
+	// initialise image directories
+	for k := range config.AllowedSizes {
+		dir := fmt.Sprintf("%s/%s", config.ImageDir, k)
 		_, err := os.Open(dir)
 		if err != nil {
 			if os.IsNotExist(err) {
-				os.MkdirAll(dir, os.ModePerm)
+				err = os.MkdirAll(dir, os.ModePerm)
+				if err != nil {
+					log.Fatalln(err)
+				}
 				log.Println("Directory created: ", dir)
 			} else {
 				log.Fatalln(err)
 			}
 		}
 	}
-}
-func main() {
+	fmt.Println("Domain is set to", config.Domain)
+	fmt.Println("Listening", config.ListenAddr)
+	fmt.Println("Serving from:", config.ImageDir)
+	fmt.Println("Upload allowed for", config.UploadTypes)
+
 	http.HandleFunc("/urifromhash/", uriFromHash)
-	http.HandleFunc("/upload/image", upload)
-	http.HandleFunc("/images/", serveImage)
-	log.Fatalln(http.ListenAndServe(":"+port, nil))
+	http.HandleFunc("/upload/image", Upload)
+	http.HandleFunc("/images/", ServeImage)
+	log.Fatalln(http.ListenAndServe(config.ListenAddr, nil))
 }
 
-func serveImage(w http.ResponseWriter, r *http.Request) {
+// ServeImage - handlerfunc for serving images
+func ServeImage(w http.ResponseWriter, r *http.Request) {
 	var mime string
 	name, ext, sz, err := processImagePath(r.URL.EscapedPath())
 	if err != nil {
@@ -106,9 +130,9 @@ func serveImage(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err.Error(), 404)
 			return
 		}
-		wh := allowedSizes[sz]
+		wh := config.AllowedSizes[sz]
 
-		src, err := original.Resize(wh[0], 0)
+		src, err := original.Resize(int(wh[0]), 0)
 		if err != nil {
 			writeError(w, err.Error(), 404)
 			return
@@ -175,9 +199,9 @@ func getOriginalImage(fname string) (*bimg.Image, error) {
 
 func imagePath(sz, name, ext string) string {
 	if sz == "o" {
-		return fmt.Sprintf("%s/%s/%s", imageDir, sz, name) // сохраняем оригинальный размер без расширения
+		return fmt.Sprintf("%s/%s/%s", config.ImageDir, sz, name) // сохраняем оригинальный размер без расширения
 	}
-	return fmt.Sprintf("%s/%s/%s%s", imageDir, sz, name, ext)
+	return fmt.Sprintf("%s/%s/%s%s", config.ImageDir, sz, name, ext)
 }
 
 func processImagePath(p string) (name, ext, sz string, err error) {
@@ -188,7 +212,7 @@ func processImagePath(p string) (name, ext, sz string, err error) {
 		return
 	}
 	ext = path.Ext(fname)
-	if !allowedTypes[ext] {
+	if _, ok := config.ReadTypes[ext]; !ok {
 		err = errors.New("bad image type requested")
 		return
 	}
@@ -196,15 +220,17 @@ func processImagePath(p string) (name, ext, sz string, err error) {
 		err = errors.New("bad image name requested")
 		return
 	}
-	if sz = parts[0]; allowedSizes[sz] == nil {
+	sz = parts[0]
+	if _, ok := config.AllowedSizes[sz]; !ok {
 		err = errors.New("bad image size requested")
 		return
 	}
 	name = parts[1]
 	return
 }
+
 func uriHelper(name string) string {
-	return fmt.Sprintf("//%s/images/[size].%s.[ext]", domain, name)
+	return fmt.Sprintf("//%s/images/[size].%s.[ext]", config.Domain, name)
 }
 
 // /urifromhash/:hash
@@ -217,4 +243,24 @@ func uriFromHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	io.WriteString(w, uriHelper(hash))
+}
+
+func readConfigFile(cfg *Config) {
+	f, err := os.Open("config.yml")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer f.Close()
+
+	decoder := yaml.NewDecoder(f)
+	err = decoder.Decode(cfg)
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+func readConfigEnv(cfg *Config) {
+	err := envconfig.Process("", cfg)
+	if err != nil {
+		log.Fatalln(err)
+	}
 }
