@@ -212,6 +212,9 @@ func processImagePath(p string) (name, ext, sz string, err error) {
 		return
 	}
 	ext = path.Ext(fname)
+	if ext == ".jpeg" {
+		ext = ".jpg"
+	}
 	if _, ok := config.ReadTypes[ext]; !ok {
 		err = errors.New("bad image type requested")
 		return

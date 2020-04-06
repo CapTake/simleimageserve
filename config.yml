@@ -7,7 +7,7 @@ readable:
     .jpg: true
     .png: true
     .webp: true
-secret: shouldbeverysecretstring
+# secret: shouldbeverysecretstring
 sizes: 
     d:
     - 16
