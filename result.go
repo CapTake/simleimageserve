@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync/atomic"
 )
 
 type result struct {
@@ -28,5 +27,8 @@ func writeError(w http.ResponseWriter, res interface{}, status int) {
 	w.Header().Set("Content-type", "application/json")
 	encoded, _ := json.Marshal(result{fmt.Sprintf("%v", status), nil, res})
 	w.Write(encoded)
-	atomic.AddInt64(&stats.Errors, 1)
+	statsMu.Lock()
+	n := stats.Errors[status]
+	stats.Errors[status] = n + 1
+	statsMu.Unlock()
 }

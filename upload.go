@@ -23,45 +23,45 @@ type uploadResult struct {
 
 // Upload - upload image file
 func Upload(w http.ResponseWriter, r *http.Request) {
-	if !isAccessAllowed(r) {
-		writeError(w, "Access denied", 403)
+	if r.Method != http.MethodPost {
+		// writeError(w, "Method not allowed", 405)
 		return
 	}
-	if r.Method != http.MethodPost {
-		writeError(w, "Method not allowed", 405)
+	if !isAccessAllowed(r) {
+		writeError(w, "Access denied", 403)
 		return
 	}
 	r.ParseMultipartForm(16 << 19) // 8Mb
 	file, header, err := r.FormFile("upload")
 	if err != nil {
-		writeError(w, err.Error(), 400)
+		writeError(w, err.Error(), 11)
 		return
 	}
 	if header.Size > maxFileSize {
-		writeError(w, fmt.Sprintf("Превышен допустимый размер файла(%v): %v", maxFileSize, header.Size), 400)
+		writeError(w, fmt.Sprintf("Превышен допустимый размер файла(%v): %v", maxFileSize, header.Size), 12)
 		return
 	}
 	defer file.Close()
 
 	ext, mimeType, err := getFtype(file)
 	if err != nil {
-		writeError(w, err.Error(), 500)
+		writeError(w, err.Error(), 13)
 		return
 	}
 
 	if _, ok := config.UploadTypes[ext]; !ok {
-		writeError(w, fmt.Sprintf("Недопустимый тип файла: %v", mimeType), 403)
+		writeError(w, fmt.Sprintf("Недопустимый тип файла: %v", mimeType), 14)
 		return
 	}
 
 	fname, err := genName(file)
 	if err != nil {
-		writeError(w, err.Error(), 500)
+		writeError(w, err.Error(), 15)
 		return
 	}
 	err = saveUploadedFile(file, imagePath("o", fname, ext))
 	if err != nil {
-		writeError(w, err.Error(), 500)
+		writeError(w, err.Error(), 16)
 		return
 	}
 	res := getUploadResult(fname, ext, mimeType)

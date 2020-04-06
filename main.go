@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -34,17 +35,20 @@ type Config struct {
 
 // Stats - global app stats
 type Stats struct {
-	Since    string `json:"since"`
-	Served   int64  `json:"served"`
-	Uploaded int64  `json:"uploaded"`
-	Errors   int64  `json:"errors"`
+	Since    string        `json:"since"`
+	Served   int64         `json:"served"`
+	Uploaded int64         `json:"uploaded"`
+	Errors   map[int]int64 `json:"errors"`
 }
+
+var statsMu sync.Mutex
 
 var config Config
 var stats Stats
 
 func init() {
 	stats.Since = time.Now().String()
+	stats.Errors = map[int]int64{}
 	config = Config{
 		Domain:      "",
 		ImageDir:    "images",
@@ -98,11 +102,17 @@ func main() {
 	fmt.Println("Serving from:", config.ImageDir)
 	fmt.Println("Upload allowed for", config.UploadTypes)
 
+	http.HandleFunc("/", NotFound)
 	http.HandleFunc("/urifromhash/", uriFromHash)
 	http.HandleFunc("/upload/image", Upload)
 	http.HandleFunc("/stats", Report)
 	http.HandleFunc("/images/", ServeImage)
 	log.Fatalln(http.ListenAndServe(config.ListenAddr, nil))
+}
+
+// NotFound - show error message
+func NotFound(w http.ResponseWriter, r *http.Request) {
+	writeError(w, "Not found", 404)
 }
 
 // Report - show short stats about running server
@@ -115,7 +125,7 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 	var mime string
 	name, ext, sz, err := processImagePath(r.URL.EscapedPath())
 	if err != nil {
-		writeError(w, err.Error(), 404)
+		writeError(w, err.Error(), 1)
 		return
 	}
 
@@ -125,13 +135,13 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 	// original size file
 	if sz == "o" {
 		if err != nil {
-			writeError(w, err.Error(), 404)
+			writeError(w, err.Error(), 2)
 			return
 		}
 		defer f.Close()
 		_, mime, err = getFtype(f)
 		if err != nil {
-			writeError(w, err.Error(), 404)
+			writeError(w, err.Error(), 3)
 			return
 		}
 	}
@@ -139,20 +149,20 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 	// other sizes
 	if err != nil {
 		if !os.IsNotExist(err) {
-			writeError(w, err.Error(), 404)
+			writeError(w, err.Error(), 5)
 			return
 		}
 
 		original, err := getOriginalImage(name)
 		if err != nil {
-			writeError(w, err.Error(), 404)
+			writeError(w, err.Error(), 6)
 			return
 		}
 		wh := config.AllowedSizes[sz]
 
 		src, err := original.Resize(int(wh[0]), 0)
 		if err != nil {
-			writeError(w, err.Error(), 404)
+			writeError(w, err.Error(), 7)
 			return
 		}
 
@@ -161,7 +171,7 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 		if bimg.DetermineImageType(src) != bimgType(ext) {
 			src, err = bimg.NewImage(src).Convert(bimgType(ext))
 			if err != nil {
-				writeError(w, err.Error(), 404)
+				writeError(w, err.Error(), 8)
 				return
 			}
 		}
@@ -169,13 +179,13 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 
 		err = bimg.Write(fpath, src)
 		if err != nil {
-			writeError(w, err.Error(), 404)
+			writeError(w, err.Error(), 9)
 			return
 		}
 
 		f, err = os.Open(fpath)
 		if err != nil {
-			writeError(w, err.Error(), 404)
+			writeError(w, err.Error(), 10)
 			return
 		}
 		defer f.Close()
