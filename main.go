@@ -10,7 +10,7 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/h2non/bimg" // lib vips is required! install it first: sudo apt install libvips libvips-dev
@@ -38,7 +38,6 @@ type Stats struct {
 	Served   int64
 	Uploaded int64
 	Errors   int64
-	mu       sync.Mutex
 }
 
 var config Config
@@ -101,8 +100,14 @@ func main() {
 
 	http.HandleFunc("/urifromhash/", uriFromHash)
 	http.HandleFunc("/upload/image", Upload)
+	http.HandleFunc("/stats", Report)
 	http.HandleFunc("/images/", ServeImage)
 	log.Fatalln(http.ListenAndServe(config.ListenAddr, nil))
+}
+
+// Report - show short stats about running server
+func Report(w http.ResponseWriter, r *http.Request) {
+	writeResult(w, stats)
 }
 
 // ServeImage - handlerfunc for serving images
@@ -180,9 +185,7 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mime)
 	io.Copy(w, f)
-	stats.mu.Lock()
-	stats.Served++
-	stats.mu.Unlock()
+	atomic.AddInt64(&stats.Served, 1)
 }
 
 func bimgType(ext string) bimg.ImageType {

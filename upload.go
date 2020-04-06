@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"sync/atomic"
 )
 
 const maxFileSize = 8_000_000
@@ -64,9 +65,7 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := getUploadResult(fname, ext, mimeType)
-	stats.mu.Lock()
-	stats.Uploaded++
-	stats.mu.Unlock()
+	atomic.AddInt64(&stats.Uploaded, 1)
 	writeResult(w, res)
 }
 
