@@ -34,10 +34,10 @@ type Config struct {
 
 // Stats - global app stats
 type Stats struct {
-	Since    string
-	Served   int64
-	Uploaded int64
-	Errors   int64
+	Since    string `json:"since"`
+	Served   int64  `json:"served"`
+	Uploaded int64  `json:"uploaded"`
+	Errors   int64  `json:"errors"`
 }
 
 var config Config
