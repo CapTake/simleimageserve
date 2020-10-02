@@ -52,7 +52,7 @@ func init() {
 	config = Config{
 		Domain:      "",
 		ImageDir:    "images",
-		ListenAddr:  "localhost:8080",
+		ListenAddr:  "0.0.0.0:5000",
 		Secret:      "",
 		Debug:       false,
 		UploadTypes: map[string]bool{".jpg": true, ".jpeg": true, ".png": true},

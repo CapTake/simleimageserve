@@ -1,22 +1,21 @@
 [Unit]
-Description=Metring Image Server
+Description=Image Server
 After=syslog.target
-
 
 [Service]
 Type=simple
-WorkingDirectory=/var/www/metring.com
+WorkingDirectory=/srv
 Restart=on-failure
-RestartSec=5
+RestartSec=3
 User=www-data
 Group=www-data
 
-Environment=WORK_ENV=production IMG_DIR=images PORT=8080 "UPLOAD_TYPES=.png .jpg .jpeg .webp"
+Environment=WORK_ENV=production IMG_DIR=/srv/images PORT=3000 "UPLOAD_TYPES=.png .jpg .jpeg .webp"
 
 OOMScoreAdjust=-100
 
-ExecStart=/var/www/metring.com/imageserver
-TimeoutSec=30
+ExecStart=/srv/imageserver
+TimeoutSec=10
 
 [Install]
 WantedBy=multi-user.target
