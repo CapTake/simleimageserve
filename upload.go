@@ -59,13 +59,27 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err.Error(), 15)
 		return
 	}
+
 	err = saveUploadedFile(file, imagePath("o", fname, ext))
 	if err != nil {
 		writeError(w, err.Error(), 16)
 		return
 	}
+
 	res := getUploadResult(fname, ext, mimeType)
 	atomic.AddInt64(&stats.Uploaded, 1)
+	/*
+		{
+			"status":"OK",
+			"res":{
+				"hash":"fd8b5e19602f90f7e329e988a8b4cd1e",
+				"ext":".jpg",
+				"uri":"//amenu.ru/images/[size].fd8b5e19602f90f7e329e988a8b4cd1e.[ext]",
+				"mime":"image/jpeg",
+				"signature":"af1287451bd514115c3d94ae19c98d2d026df601bc271b26b14624cc543d638f"
+			}
+		}
+	*/
 	writeResult(w, res)
 }
 

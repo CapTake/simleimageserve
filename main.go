@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"log"
 	m "mime"
@@ -14,7 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/h2non/bimg" // lib vips is required! install it first: sudo apt install libvips libvips-dev
+	// "github.com/h2non/bimg" // lib vips is required! install it first: sudo apt install libvips libvips-dev
+	"github.com/disintegration/imaging"
 	"github.com/kelseyhightower/envconfig"
 	"gopkg.in/yaml.v2"
 )
@@ -158,26 +160,24 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err.Error(), 6)
 			return
 		}
+
 		wh := config.AllowedSizes[sz]
 
-		src, err := original.Resize(int(wh[0]), 0)
-		if err != nil {
-			writeError(w, err.Error(), 7)
-			return
-		}
+		src := imaging.Resize(original, int(wh[0]), 0, imaging.Lanczos)
+		/*
+			Imaging supports image resizing using various resampling filters. The most notable ones:
+
+			Lanczos - A high-quality resampling filter for photographic images yielding sharp results.
+			CatmullRom - A sharp cubic filter that is faster than Lanczos filter while providing similar results.
+			MitchellNetravali - A cubic filter that produces smoother results with less ringing artifacts than CatmullRom.
+			Linear - Bilinear resampling filter, produces smooth output. Faster than cubic filters.
+			Box - Simple and fast averaging filter appropriate for downscaling. When upscaling it's similar to NearestNeighbor.
+			NearestNeighbor - Fastest resampling filter, no antialiasing.
+		*/
 
 		original = nil
 
-		if bimg.DetermineImageType(src) != bimgType(ext) {
-			src, err = bimg.NewImage(src).Convert(bimgType(ext))
-			if err != nil {
-				writeError(w, err.Error(), 8)
-				return
-			}
-		}
-		mime = http.DetectContentType(src)
-
-		err = bimg.Write(fpath, src)
+		err = imaging.Save(src, fpath)
 		if err != nil {
 			writeError(w, err.Error(), 9)
 			return
@@ -189,43 +189,36 @@ func ServeImage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer f.Close()
-	} else {
-		mime = m.TypeByExtension(ext)
 	}
+	mime = m.TypeByExtension(ext)
 
 	w.Header().Set("Content-Type", mime)
 	io.Copy(w, f)
 	atomic.AddInt64(&stats.Served, 1)
 }
 
-func bimgType(ext string) bimg.ImageType {
-	switch ext {
-	case ".jpg":
-		fallthrough
-	case ".jpeg":
-		return bimg.JPEG
-	case ".png":
-		return bimg.PNG
-	case ".webp":
-		return bimg.WEBP
-	case ".gif":
-		return bimg.GIF
-	}
-	return bimg.UNKNOWN
-}
+// func getOriginalImage(fname string) (*bimg.Image, error) {
+// 	ext := path.Ext(fname)
+// 	name := strings.TrimSuffix(fname, ext)
+// 	buffer, err := bimg.Read(imagePath("o", name, ext))
 
-func getOriginalImage(fname string) (*bimg.Image, error) {
+// 	if err == nil {
+// 		return bimg.NewImage(buffer), nil
+// 	}
+
+// 	return nil, errors.New("Image Not found")
+// }
+func getOriginalImage(fname string) (image.Image, error) {
 	ext := path.Ext(fname)
 	name := strings.TrimSuffix(fname, ext)
-	buffer, err := bimg.Read(imagePath("o", name, ext))
+	src, err := imaging.Open(imagePath("o", name, ext))
 
 	if err == nil {
-		return bimg.NewImage(buffer), nil
+		return src, nil
 	}
 
 	return nil, errors.New("Image Not found")
 }
-
 func imagePath(sz, name, ext string) string {
 	if sz == "o" {
 		return fmt.Sprintf("%s/%s/%s", config.ImageDir, sz, name) // сохраняем оригинальный размер без расширения
