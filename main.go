@@ -1,17 +1,15 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
+	. "imagesamenu/middleware"
+
 	"log"
-	m "mime"
 	"net/http"
+
+	// _ "net/http/pprof"
 	"os"
-	"path"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/h2non/bimg" // lib vips is required! install it first: sudo apt install libvips libvips-dev
@@ -31,6 +29,7 @@ type Config struct {
 	UploadTypes  map[string]bool      `yaml:"uploadable" envconfig:"IMAGESERVER_UPLOAD_TYPES"`
 	ReadTypes    map[string]bool      `yaml:"readable" envconfig:"IMAGESERVER_READ_TYPES"`
 	AllowedSizes map[string][2]uint16 `yaml:"sizes"`
+	UploadKey    string               `yaml:"uploadkey" envconfig:"IMAGESERVER_UPLOAD_KEY"`
 }
 
 // Stats - global app stats
@@ -43,35 +42,36 @@ type Stats struct {
 
 var statsMu sync.Mutex
 
-var config Config
 var stats Stats
 
 func init() {
 	stats.Since = time.Now().String()
 	stats.Errors = map[int]int64{}
-	config = Config{
-		Domain:      "",
-		ImageDir:    "images",
-		ListenAddr:  "localhost:8080",
-		Secret:      "",
-		Debug:       false,
-		UploadTypes: map[string]bool{".jpg": true, ".jpeg": true, ".png": true},
-		ReadTypes:   map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true},
-		AllowedSizes: map[string][2]uint16{
-			"o":  [2]uint16{0, 0},
-			"d":  [2]uint16{16, 9},
-			"xs": [2]uint16{64, 36},
-			"sm": [2]uint16{384, 216},
-			"md": [2]uint16{768, 432},
-			"lg": [2]uint16{1280, 720},
-			"xl": [2]uint16{1920, 1080},
-		},
-	}
+	// config = Config{
+	// 	Domain:      "",
+	// 	ImageDir:    "images",
+	// 	ListenAddr:  "localhost:8080",
+	// 	Secret:      "",
+	// 	Debug:       false,
+	// 	UploadTypes: map[string]bool{".jpg": true, ".jpeg": true, ".png": true},
+	// 	ReadTypes:   map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true},
+	// 	AllowedSizes: map[string][2]uint16{
+	// 		"o":  [2]uint16{0, 0},
+	// 		"d":  [2]uint16{16, 9},
+	// 		"xs": [2]uint16{64, 36},
+	// 		"sm": [2]uint16{384, 216},
+	// 		"md": [2]uint16{768, 432},
+	// 		"lg": [2]uint16{1280, 720},
+	// 		"xl": [2]uint16{1920, 1080},
+	// 	},
+	// }
 	// res, _ := yaml.Marshal(&config)
 	// fmt.Println(string(res))
 }
 
 func main() {
+	var config Config
+
 	readConfigFile(&config)
 	readConfigEnv(&config)
 	if config.Domain == "" {
@@ -80,7 +80,14 @@ func main() {
 	if config.Secret == "" {
 		log.Fatalln("config.Secret unspecified, can't continue.")
 	}
-
+	if config.UploadKey == "" {
+		log.Fatalln("config.UploadKey unspecified, can't continue.")
+	}
+	var (
+		imagePath = ImagePath{config.ImageDir}
+		serve     = ImageServe{config.AllowedSizes, config.ReadTypes, imagePath.ImagePath, config.Domain}
+		upload    = ImageUploadHandler{config.UploadTypes, imagePath.ImagePath, serve.URIHelper, config.UploadKey}
+	)
 	// initialise image directories
 	for k := range config.AllowedSizes {
 		dir := fmt.Sprintf("%s/%s", config.ImageDir, k)
@@ -101,12 +108,19 @@ func main() {
 	fmt.Println("Listening", config.ListenAddr)
 	fmt.Println("Serving from:", config.ImageDir)
 	fmt.Println("Upload allowed for", config.UploadTypes)
+	// .Add(NewAuthCheck(writeError))
+	uploadHandler := NewExtHandler(&upload).Add(&AuthCheck{ErrorHandler: writeError}).Add(NewTokenParser(config.Secret, true, writeError))
+
+	if config.Debug {
+		uploadHandler.Add(new(ImageForm))
+	}
 
 	http.HandleFunc("/", NotFound)
-	http.HandleFunc("/urifromhash/", uriFromHash)
-	http.HandleFunc("/upload/image", Upload)
+	http.HandleFunc("/urifromhash/", serve.URIFromHash)
+	http.HandleFunc("/local/image", upload.UploadLocal)
+	http.Handle("/upload/image", uploadHandler)
 	http.HandleFunc("/stats", Report)
-	http.HandleFunc("/images/", ServeImage)
+	http.Handle("/images/", &serve)
 	log.Fatalln(http.ListenAndServe(config.ListenAddr, nil))
 }
 
@@ -118,84 +132,6 @@ func NotFound(w http.ResponseWriter, r *http.Request) {
 // Report - show short stats about running server
 func Report(w http.ResponseWriter, r *http.Request) {
 	writeResult(w, stats)
-}
-
-// ServeImage - handlerfunc for serving images
-func ServeImage(w http.ResponseWriter, r *http.Request) {
-	var mime string
-	name, ext, sz, err := processImagePath(r.URL.EscapedPath())
-	if err != nil {
-		writeError(w, err.Error(), 1)
-		return
-	}
-
-	fpath := imagePath(sz, name, ext)
-	f, err := os.Open(fpath)
-
-	// original size file
-	if sz == "o" {
-		if err != nil {
-			writeError(w, err.Error(), 2)
-			return
-		}
-		defer f.Close()
-		_, mime, err = getFtype(f)
-		if err != nil {
-			writeError(w, err.Error(), 3)
-			return
-		}
-	}
-
-	// other sizes
-	if err != nil {
-		if !os.IsNotExist(err) {
-			writeError(w, err.Error(), 5)
-			return
-		}
-
-		original, err := getOriginalImage(name)
-		if err != nil {
-			writeError(w, err.Error(), 6)
-			return
-		}
-		wh := config.AllowedSizes[sz]
-
-		src, err := original.Resize(int(wh[0]), 0)
-		if err != nil {
-			writeError(w, err.Error(), 7)
-			return
-		}
-
-		original = nil
-
-		if bimg.DetermineImageType(src) != bimgType(ext) {
-			src, err = bimg.NewImage(src).Convert(bimgType(ext))
-			if err != nil {
-				writeError(w, err.Error(), 8)
-				return
-			}
-		}
-		mime = http.DetectContentType(src)
-
-		err = bimg.Write(fpath, src)
-		if err != nil {
-			writeError(w, err.Error(), 9)
-			return
-		}
-
-		f, err = os.Open(fpath)
-		if err != nil {
-			writeError(w, err.Error(), 10)
-			return
-		}
-		defer f.Close()
-	} else {
-		mime = m.TypeByExtension(ext)
-	}
-
-	w.Header().Set("Content-Type", mime)
-	io.Copy(w, f)
-	atomic.AddInt64(&stats.Served, 1)
 }
 
 func bimgType(ext string) bimg.ImageType {
@@ -214,68 +150,12 @@ func bimgType(ext string) bimg.ImageType {
 	return bimg.UNKNOWN
 }
 
-func getOriginalImage(fname string) (*bimg.Image, error) {
-	ext := path.Ext(fname)
-	name := strings.TrimSuffix(fname, ext)
-	buffer, err := bimg.Read(imagePath("o", name, ext))
-
-	if err == nil {
-		return bimg.NewImage(buffer), nil
-	}
-
-	return nil, errors.New("Image Not found")
-}
-
-func imagePath(sz, name, ext string) string {
-	if sz == "o" {
-		return fmt.Sprintf("%s/%s/%s", config.ImageDir, sz, name) // сохраняем оригинальный размер без расширения
-	}
-	return fmt.Sprintf("%s/%s/%s%s", config.ImageDir, sz, name, ext)
-}
-
-func processImagePath(p string) (name, ext, sz string, err error) {
-	fname := path.Base(p)
-	parts := strings.Split(fname, ".")
-	if len(parts) != 3 {
-		err = errors.New("bad name")
-		return
-	}
-	ext = path.Ext(fname)
-	if ext == ".jpeg" {
-		ext = ".jpg"
-	}
-	if _, ok := config.ReadTypes[ext]; !ok {
-		err = errors.New("bad image type requested")
-		return
-	}
-	if len(parts[1]) < 5 {
-		err = errors.New("bad image name requested")
-		return
-	}
-	sz = parts[0]
-	if _, ok := config.AllowedSizes[sz]; !ok {
-		err = errors.New("bad image size requested")
-		return
-	}
-	name = parts[1]
-	return
-}
-
-func uriHelper(name string) string {
-	return fmt.Sprintf("//%s/images/[size].%s.[ext]", config.Domain, name)
-}
-
-// /urifromhash/:hash
-func uriFromHash(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-type", "text/plain")
-	p := r.URL.EscapedPath()
-	_, hash := path.Split(p)
-	if _, err := getOriginalImage(hash); err != nil {
-		http.Error(w, err.Error(), 404)
-		return
-	}
-	io.WriteString(w, uriHelper(hash))
-}
+// func imagePath(sz, name, ext string) string {
+// 	if sz == "o" {
+// 		return fmt.Sprintf("%s/%s/%s", config.ImageDir, sz, name) // сохраняем оригинальный размер без расширения
+// 	}
+// 	return fmt.Sprintf("%s/%s/%s%s", config.ImageDir, sz, name, ext)
+// }
 
 func readConfigFile(cfg *Config) {
 	f, err := os.Open("config.yml")

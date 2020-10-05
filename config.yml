@@ -1,7 +1,8 @@
 debug: true
-domain: media.metring.com
+domain: amenu.ru
 imgdir: images
-listen: "localhost:8080"
+listen: "0.0.0.0:3000"
+# uploadkey: "verysecretkey"
 readable: 
     .jpeg: false
     .jpg: true
@@ -9,27 +10,33 @@ readable:
     .webp: true
 # secret: shouldbeverysecretstring
 sizes: 
-    d:
-    - 16
+    a:
     - 10
-    lg:
-    - 1280
-    - 720
-    md:
-    - 768
-    - 432
+    - 10
+    b:
+    - 70
+    - 70
+    bv:
+    - 52
+    - 70
     o:
     - 0
     - 0
-    sm:
-    - 384
-    - 216
-    xl:
-    - 1920
-    - 1080
-    xs:
-    - 64
-    - 36
+    c:
+    - 200
+    - 200
+    cv:
+    - 150
+    - 200
+    d:
+    - 480
+    - 480
+    dv:
+    - 480
+    - 640
+    e:
+    - 960
+    - 480
 uploadable: 
     .jpeg: true
     .jpg: true
