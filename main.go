@@ -12,7 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/h2non/bimg" // lib vips is required! install it first: sudo apt install libvips libvips-dev
+	// "github.com/h2non/bimg" // lib vips is required! install it first: sudo apt install libvips libvips-dev
+
 	"github.com/kelseyhightower/envconfig"
 	"gopkg.in/yaml.v2"
 )
@@ -132,22 +133,6 @@ func NotFound(w http.ResponseWriter, r *http.Request) {
 // Report - show short stats about running server
 func Report(w http.ResponseWriter, r *http.Request) {
 	writeResult(w, stats)
-}
-
-func bimgType(ext string) bimg.ImageType {
-	switch ext {
-	case ".jpg":
-		fallthrough
-	case ".jpeg":
-		return bimg.JPEG
-	case ".png":
-		return bimg.PNG
-	case ".webp":
-		return bimg.WEBP
-	case ".gif":
-		return bimg.GIF
-	}
-	return bimg.UNKNOWN
 }
 
 // func imagePath(sz, name, ext string) string {

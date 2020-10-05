@@ -1,20 +1,21 @@
 [Unit]
-Description=Amenu Image Server
+Description=Image Server
 After=syslog.target
-
 
 [Service]
 Type=simple
-WorkingDirectory=/root
+WorkingDirectory=/srv
 Restart=on-failure
-RestartSec=5
+RestartSec=3
+User=www-data
+Group=www-data
 
-EnvironmentFile=/root/amenu.ru/.env
+Environment=WORK_ENV=production IMG_DIR=/srv/images PORT=3000 "UPLOAD_TYPES=.png .jpg .jpeg .jpe"
 
 OOMScoreAdjust=-100
 
-ExecStart=/root/imagesamenu
-TimeoutSec=5
+ExecStart=/srv/imageserver
+TimeoutSec=10
 
 [Install]
 WantedBy=multi-user.target

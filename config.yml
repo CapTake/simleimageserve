@@ -1,15 +1,15 @@
 debug: true
 domain: amenu.ru
 imgdir: images
-listen: "0.0.0.0:3000"
+listen: "0.0.0.0:3050"
 # uploadkey: "verysecretkey"
-readable: 
+readable:
     .jpeg: false
     .jpg: true
     .png: true
     .webp: true
-# secret: shouldbeverysecretstring
-sizes: 
+secret: shouldbeverysecretstring
+sizes:
     a:
     - 10
     - 10
@@ -37,7 +37,8 @@ sizes:
     e:
     - 960
     - 480
-uploadable: 
+uploadable:
+    .jpe: true
     .jpeg: true
     .jpg: true
     .png: true
