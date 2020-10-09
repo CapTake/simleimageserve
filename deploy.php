@@ -29,7 +29,7 @@ host('194.67.112.124')
 ->stage('production')
 ->user('root')
 // ->become('www-data')
-->configFile('~/.ssh/config')
+// ->configFile('~/.ssh/config')
 ->identityFile('~/.ssh/id_rsa')
 ->forwardAgent(true)
 ->set('deploy_path', '~/{{application}}');    
