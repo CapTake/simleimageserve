@@ -8,7 +8,9 @@ readable:
     .jpg: true
     .png: true
     .webp: true
-secret: shouldbeverysecretstring
+secret: shouldbeverysecretstring,
+tokenname: xtoken,
+usecookie: true,
 sizes:
     a:
     - 10

@@ -14,21 +14,35 @@ type TokenParser struct {
 	next         http.Handler
 	secretKey    []byte
 	strict       bool
+	useCookie    bool
+	headerName   string
 	errorHandler func(http.ResponseWriter, interface{}, int)
 }
 
 // NewTokenParser - initialises new token parser middleware
-func NewTokenParser(secret string, strict bool, errorHandler func(http.ResponseWriter, interface{}, int)) *TokenParser {
+func NewTokenParser(secret, headerName string, strict, useCookie bool, errorHandler func(http.ResponseWriter, interface{}, int)) *TokenParser {
 	return &TokenParser{
 		nil,
 		[]byte(secret),
 		strict,
+		useCookie,
+		headerName,
 		errorHandler,
 	}
 }
 
 func (i *TokenParser) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	tokenString := r.Header.Get("x-token")
+	tokenString := ""
+	if i.useCookie {
+		cookie, err := r.Cookie(i.headerName)
+		if err != nil {
+			i.errorHandler(w, err.Error(), 400)
+			return
+		}
+		tokenString = cookie.Value
+	} else {
+		tokenString = r.Header.Get(i.headerName)
+	}
 	// tokenString = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwidWlkIjoiMTA3IiwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE5MjMzMzMzMzN9.yCoTzcnnojoQplpfjMzcR6-vd0QPeGJe_iHx9sSWB3k"
 
 	if tokenString != "" {

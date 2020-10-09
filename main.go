@@ -31,6 +31,8 @@ type Config struct {
 	ReadTypes    map[string]bool      `yaml:"readable" envconfig:"IMAGESERVER_READ_TYPES"`
 	AllowedSizes map[string][2]uint16 `yaml:"sizes"`
 	UploadKey    string               `yaml:"uploadkey" envconfig:"IMAGESERVER_UPLOAD_KEY"`
+	UseCookie    bool                 `yaml:"usecookie" envconfig:"IMAGESERVER_USE_COOKIE"`
+	HeaderName   string               `yaml:"tokenname" envconfig:"IMAGESERVER_TOKEN_NAME"`
 }
 
 // Stats - global app stats
@@ -109,8 +111,10 @@ func main() {
 	fmt.Println("Listening", config.ListenAddr)
 	fmt.Println("Serving from:", config.ImageDir)
 	fmt.Println("Upload allowed for", config.UploadTypes)
+	fmt.Println("Token header name:", config.HeaderName)
+	fmt.Println("Using cookie token:", config.UseCookie)
 	// .Add(NewAuthCheck(writeError))
-	uploadHandler := NewExtHandler(&upload).Add(&AuthCheck{ErrorHandler: writeError}).Add(NewTokenParser(config.Secret, true, writeError))
+	uploadHandler := NewExtHandler(&upload).Add(&AuthCheck{ErrorHandler: writeError}).Add(NewTokenParser(config.Secret, config.HeaderName, true, config.UseCookie, writeError))
 
 	if config.Debug {
 		uploadHandler.Add(new(ImageForm))
